@@ -25,7 +25,7 @@ router.get('/', async (req, res, next) => {
         }
         let data ;
           if(userRole == 2){
-            data = await find({ $or: [ { assignedTo: userId },{ createdBy: userId } ],
+            data = await find({ $or: [ { assignedTo: userId },{ createdBy: userId } , {delegatedTo :userId}],
          status: { $ne: 0 }});
           }
           else if(userRole == 3){
@@ -40,10 +40,9 @@ router.get('/', async (req, res, next) => {
 
 router.post('/',checkLoginStatus,upload.single("file"), async (req, res, next) => {
 	try {
-    		const {title, description, officerName} = req.body;
+    		const {title, description} = req.body;
 		   const file = req.file;
            console.log("Incoming body:", req.body);
-         console.log("Officer 2:", officerName);
           console.log("File:", file);
           console.log("file link " , file);
 		if (!file) {
@@ -72,9 +71,7 @@ router.post('/',checkLoginStatus,upload.single("file"), async (req, res, next) =
 			url:`/uploads/templates/${file.filename}`, 
 			createdBy: req.session.userId,  
 			updatedBy: req.session.userId ,
-            templateVariables: templateVariables,
-             assignedTo: officerName, 
-            
+            templateVariables: templateVariables,            
 		});
 
 		const saved = await newTemplate.save();
@@ -195,9 +192,16 @@ router.get('/:id/clone', async (req, res) => {
       ...original.toObject(),
       _id: undefined,
       createdAt: new Date(),
-      templateName: original.templateName + " (Clone)"
+      updatedAt: new Date(),
+      id:req.session.userId, 
+      createdBy:req.session.userId ,
+      assignedTo:null,
+      delegatedTo:null,  
+      templateName: original.templateName + " (Clone)" ,
     });
-    await cloned.save();
+    console.log("reques session id ", req.session.userId);
+    await cloned.save(); 
+    console.log("cloned data =>", cloned );
     res.send({ success: true });
     } catch (error) { 
     console.error("Error in cloning:", {
@@ -332,5 +336,23 @@ router.delete('/deleteWholeTemplate/:id',async (req,res)=>{
     }catch(err){
         console.error("Error deleting whole template :", err);
     }
+}) 
+router.post("/sendForSign",async (req, res)=>{
+    try{ 
+        // console.log("recordId  and officerId", recordId,officerId);
+      const {recordId , officerId} = req.body.data ; 
+      const updatedTemplate = await updateOne(
+        { id:  recordId},
+        {
+            $set: { assignedTo:  officerId , signStatus:4
+            },
+        },
+        { new: true }
+    );  
+      console.log("updatedTemplate ",updatedTemplate);
+     res.status(200).json({success :true , message: "sent for sign"});
+  } catch(err){
+    console.error("Error sending for sign:", err);
+  }
 })
 export default router;

@@ -59,7 +59,7 @@ export const schema = new mongoose.Schema({
         signedDate: {
             type: Date,
         },
-        signStatus: {
+        signStatus: { 
             type: Number,
         },
         url: {
