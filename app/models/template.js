@@ -68,6 +68,10 @@ export const schema = new mongoose.Schema({
         rejectionReason: {
             type: String,
         },
+        isDeleted :{
+            type: Boolean,
+            default: false,
+        }
     }],
     'assignedTo': {
         type: mongoose.Schema.Types.ObjectId,

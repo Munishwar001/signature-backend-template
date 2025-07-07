@@ -7,7 +7,6 @@ import { CourtCreationSchema } from '../../schema/court.js';
 import mongoose from 'mongoose';
 import { userServices } from '../../services/index.js';
 import courtModel from "../../models/courts.js"
-
 const router = Router();
 router.get('/', checkLoginStatus, checkAdmin, async (req, res, next) => {
     try {
@@ -54,7 +53,7 @@ router.get('/officerForAssignment', checkLoginStatus, async (req, res, next) => 
             courtId: courtId,
             status: status.active,
             role: roles.officer,
-        }, { name: 1, id: 1 });
+        }, { name: 1, id: 1 ,email:1 });
         return res.json(users);
     } catch (error) {
         next(error);
