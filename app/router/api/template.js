@@ -354,5 +354,36 @@ router.post("/sendForSign",async (req, res)=>{
   } catch(err){
     console.error("Error sending for sign:", err);
   }
+}) 
+
+router.post("/delegate", async (req,res) =>{
+    try{ 
+         const {recordId ,reason} = req.body; 
+         console.log("recordId , reason" , recordId , reason);
+         const existingRecord = await findOne({ id: recordId });
+
+         if (!existingRecord) {
+             return res.status(404).json({ success: false, message: "Record not found" });
+         }
+ 
+         const createdBy = existingRecord.createdBy;
+ 
+         const updatedTemplate = await updateOne(
+             { id: recordId },
+             {
+                 $set: {
+                     delegatedTo: createdBy,
+                     signStatus: 3,
+                     delegationReason: reason
+                 },
+             },
+             { new: true }
+         );
+ 
+         res.status(200).json({ success: true, message: "Delegated", data: updatedTemplate }); 
+    } catch(err){
+        console.log("Error while delegate =>", err);
+        res.status(400).json({success:false});
+    }    
 })
 export default router;
