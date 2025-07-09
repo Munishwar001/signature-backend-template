@@ -64,7 +64,6 @@ router.post('/',checkLoginStatus,upload.single("file"), async (req, res, next) =
                 showOnExcel: false,
             };
         });  
-       // console.log("templateVariables in (/) when i am inserting the file =>",templateVariables);      
 		const newTemplate = new Template({
     		templateName: title,
 			description : description,

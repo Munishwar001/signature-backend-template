@@ -36,11 +36,16 @@ app.use(sessionMiddleware);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use("/public", express.static(path.join(__dirname, "../public")));
+app.use("/uploads",express.static(path.join(__dirname, "../uploads")));
 app.use('/', router);
 
 app.use((error, req, res, next) => {
 	try {
-		console.error(error);
+		console.error(error); 
+		if (error.message === 'Only image files (jpeg, png) are allowed!') {
+			return res.status(400).json({ message: error.message });
+		  }
+
 		if (error.code === 11000) {
 			return res.status(500).json({
 				error: generateMongooseDuplicateKeyMessage(error),
