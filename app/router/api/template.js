@@ -11,8 +11,12 @@ import {checkLoginStatus} from '../../middleware/checkAuth.js'
 import PizZip from 'pizzip';
 import Docxtemplater from 'docxtemplater';
 import fs from 'fs';
+import { fileURLToPath } from 'url';
 import  convertToPDF from '../../utils/convertToPdf.js';
+
 const router = Router();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename); 
 
 router.get('/', async (req, res, next) => {
     try {
@@ -126,7 +130,7 @@ router.post('/datahandling',checkLoginStatus,bulkUpload.single("file"), async (r
         const allfields = Object.keys(excelData[0]);
         console.log("allfields",allfields);
 
-       const validData = [];
+        const validData = [];
         const skippedEntries = [];
 
         for (const [index, data] of excelData.entries()) {
@@ -197,6 +201,8 @@ router.get('/:id/clone', async (req, res) => {
       assignedTo:null,
       delegatedTo:null,  
       templateName: original.templateName + " (Clone)" ,
+      data:[],
+      signStatus:0,
     });
     console.log("reques session id ", req.session.userId);
     await cloned.save(); 
@@ -384,5 +390,29 @@ router.post("/delegate", async (req,res) =>{
         console.log("Error while delegate =>", err);
         res.status(400).json({success:false});
     }    
-})
+}) 
+
+router.get("/previewDocs/:id", async (req, res) => {
+    try {
+      const templateId = req.params.id; 
+      if (!templateId) {
+        return res.status(400).send("No Id provided provided.");
+      }
+      const template = await findOne({ id: templateId });
+      console.log("templateURL",template.url);
+      const BASE_DIR = path.resolve(__dirname, "../../../");
+      const filePath = path.join(BASE_DIR ,template.url);
+      const docxBuffer = fs.readFileSync(filePath);
+      const pdfBuffer = await convertToPDF(docxBuffer); 
+      res.set({
+        "Content-Type": "application/pdf",
+        "Content-Disposition": 'inline; filename="preview.pdf"',
+      });
+      res.send(pdfBuffer);
+    } catch (error) {
+      console.error("Error generating PDF preview:", error);
+      res.status(500).send("Failed to preview document.");
+    }
+  });
+  
 export default router;
