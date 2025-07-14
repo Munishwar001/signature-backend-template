@@ -57,14 +57,15 @@ router.post('/',checkLoginStatus,upload.single("file"), async (req, res, next) =
 
         const tags = doc.getFullText().match(/{{(.*?)}}|{(.*?)}/g) || [];
           
-         const templateVariables = tags.map(tag => {
-            const cleanTag = tag.replace(/{{|}}|{|}/g, '').trim();
-              return {
-                name: cleanTag,
-                required: true,
-                showOnExcel: false,
-            };
-        });  
+        const templateVariables = tags
+        .map(tag => tag.replace(/{{|}}|{|}/g, '').trim())
+        .filter(name => name.toLowerCase() !== "signature")
+        .map(name => ({
+          name,
+          required: true,
+          showOnExcel: false,
+        }));
+        
 		const newTemplate = new Template({
     		templateName: title,
 			description : description,
@@ -182,11 +183,14 @@ router.post('/datahandling',checkLoginStatus,bulkUpload.single("file"), async (r
     }
 });
 
-router.get('/:id/clone', async (req, res) => { 
+router.get('/:id/clone',checkLoginStatus,async (req, res) => { 
     try{
     const id = req.params.id;
     console.log("welcome in clone id is " , id);
     const original = await Template.findOne({_id :id});
+    if(!original || original.isDeleted || original.signStatus==signStatus.rejected){
+        return res.status(404).json({ message: "Try to access invalid access" });
+    }
     console.log("findinf for cloning the data ", original);
     const cloned = new Template({
       ...original.toObject(),
@@ -509,5 +513,6 @@ router.post("/rejectWholeRequest/:id",checkLoginStatus, checkOfficer, async (req
         console.log("Error while delegate =>", err);
         res.status(400).json({success:false});
     }    
-}) 
+})
+
 export default router;
