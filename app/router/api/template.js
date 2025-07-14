@@ -3,7 +3,7 @@ import Template from '../../models/template.js';
 import upload from '../../middleware/uploads.js';
 import { bulkUpload } from '../../middleware/uploads.js';
 import path from 'path';
-import {signStatus} from '../../constants/index.js'
+import {signStatus ,roles} from '../../constants/index.js'
 import mongoose from 'mongoose';
 import { find, findOne, updateOne, save } from '../../services/templates.js'
 import extractExcelData  from  '../../utils/readExcel.js'
@@ -13,12 +13,13 @@ import Docxtemplater from 'docxtemplater';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import  convertToPDF from '../../utils/convertToPdf.js';
+import { checkOfficer } from '../../middleware/checkOfficer.js';
 
 const router = Router();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename); 
 
-router.get('/', async (req, res, next) => {
+router.get('/',checkLoginStatus, async (req, res, next) => {
     try {
         const userId = req.session.userId;
         const userRole = req.session.role;
@@ -28,13 +29,9 @@ router.get('/', async (req, res, next) => {
             return res.status(401).json({ message: "Unauthorized: No session user ID" });
         }
         let data ;
-          if(userRole == 2){
-            data = await find({ $or: [ { assignedTo: userId },{ createdBy: userId } , {delegatedTo :userId}],
+
+         data = await find({ $or: [ { assignedTo: userId },{ createdBy: userId } , {delegatedTo :userId}],
          status: { $ne: 0 }});
-          }
-          else if(userRole == 3){
-         data = await find({ createdBy: userId, status: { $ne: 0 } });
-    }
          console.log(data);
         res.status(200).json({ message: "Successfully fetched templates", data });
     } catch (error) {
@@ -202,7 +199,7 @@ router.get('/:id/clone', async (req, res) => {
       delegatedTo:null,  
       templateName: original.templateName + " (Clone)" ,
       data:[],
-      signStatus:0,
+      signStatus:signStatus.unsigned,
     });
     console.log("reques session id ", req.session.userId);
     await cloned.save(); 
@@ -272,7 +269,7 @@ router.post('/delete/:id', checkLoginStatus, async (req, res, next) => {
             },
             {
                 arrayFilters: [{ "elem.id": new mongoose.Types.ObjectId(record.id) }],
-                new: true
+                new: true 
             }
         );
 
@@ -342,14 +339,13 @@ router.delete('/deleteWholeTemplate/:id',async (req,res)=>{
         console.error("Error deleting whole template :", err);
     }
 }) 
-router.post("/sendForSign",async (req, res)=>{
+router.post("/sendForSign",checkLoginStatus,async (req, res)=>{
     try{ 
-        // console.log("recordId  and officerId", recordId,officerId);
       const {recordId , officerId} = req.body.data ; 
       const updatedTemplate = await updateOne(
         { id:  recordId},
         {
-            $set: { assignedTo:  officerId , signStatus:4
+            $set: { assignedTo:  officerId , signStatus:signStatus.readForSign 
             },
         },
         { new: true }
@@ -361,7 +357,7 @@ router.post("/sendForSign",async (req, res)=>{
   }
 }) 
 
-router.post("/delegate", async (req,res) =>{
+router.post("/delegate",checkLoginStatus, checkOfficer, async (req,res) =>{
     try{ 
          const {recordId ,reason} = req.body; 
          console.log("recordId , reason" , recordId , reason);
@@ -378,7 +374,7 @@ router.post("/delegate", async (req,res) =>{
              {
                  $set: {
                      delegatedTo: createdBy,
-                     signStatus: 3,
+                     signStatus:signStatus.delegated,
                      delegationReason: reason
                  },
              },
@@ -415,4 +411,103 @@ router.get("/previewDocs/:id", async (req, res) => {
     }
   });
   
+  router.post('/reject/:id', checkLoginStatus,checkOfficer, async (req, res, next) => { 
+    const record = req.body;
+    const {id} = req.params;
+    console.log("record of rejected data ");
+    console.log("record =>", record);
+    console.log("id =>",id);  
+    try {
+     if (!record.requestId) {
+         return res.status(400).json({ message: "Record ID is missing" });
+     }
+     const updatedTemplate = await Template.updateOne(
+         { id: id }, 
+         {
+             $set: {
+                 "data.$[elem].signStatus": signStatus.rejected,
+                    "data.$[elem].rejectionReason": record.rejectionReason
+             }
+         },
+         {
+             arrayFilters: [{ "elem.id": new mongoose.Types.ObjectId(record.requestId) }],
+             new: true 
+         }
+     );
+
+     if (updatedTemplate.modifiedCount === 0) {
+         return res.status(404).json({ message: "Record not found in data array" });
+     }
+
+     res.status(200).json({ success: true, message: "Record marked as deleted" });
+
+ }  catch (error) {
+     console.error("Error while marking record as deleted:", error);
+     next(error);
+ } 
+})
+
+
+router.get('/fetchRejected/:id', checkLoginStatus, async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ message: "Invalid ID format" });
+        }
+ 
+        const template = await Template.findOne({ id: id });
+
+        if (!template) {
+            return res.status(404).json({ message: "Template not found" });
+        }
+
+        const transformedData = template.data.filter(item => item.signStatus === 2) .map(item => ({
+            ...item.toObject(),
+            data: item.data instanceof Map ? 
+                Object.fromEntries(item.data) : 
+                item.data,
+            rejectionReason: item.rejectionReason || "No reason provided",
+            _id: item._id.toString()
+        }));
+
+        res.status(200).json({
+            ...template.toObject(),
+            data: transformedData,
+            templateVariables: template.templateVariables,
+            allfields: template.templateVariables.map(v => v.name)
+        });
+        
+    } catch (error) {
+        console.error("Fetch template error:", error);
+        next(error);
+    }
+});
+router.post("/rejectWholeRequest/:id",checkLoginStatus, checkOfficer, async (req,res) =>{
+    try{ 
+         const id = req.params.id; 
+         console.log("in the rejected Whole Request ", req.body); 
+         const {reason} = req.body ; 
+         console.log("id in rejectWholeRequest =>" , id);
+         const existingRecord = await findOne({ id: id });
+
+         if (!existingRecord) {
+             return res.status(404).json({ success: false, message: "Record not found" });
+         }
+         const updatedTemplate = await updateOne(
+             { id: id },
+             {
+                 $set: {
+                     signStatus:signStatus.rejected,
+                     rejectionReason: reason 
+                 },
+             },
+             { new: true }
+         );
+ 
+         res.status(200).json({ success: true, message: "Delegated", data: updatedTemplate }); 
+    } catch(err){
+        console.log("Error while delegate =>", err);
+        res.status(400).json({success:false});
+    }    
+}) 
 export default router;
