@@ -1,7 +1,7 @@
 import model from '../models/template.js';
 
 export const find = (criteria, projection, options = {}) => {
-    options.lean = true;
+    options.lean = false;
     return model.find(criteria, projection, options);
 }
 

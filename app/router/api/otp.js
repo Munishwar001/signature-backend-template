@@ -98,15 +98,16 @@ router.post("/verify",checkLoginStatus , checkOfficer , async (req,res)=>{
       const finalPdfPath = signedDocxPath.replace('.docx', '.pdf');
       fs.writeFileSync(finalPdfPath, pdfBuf);
 
-      record.data.signStatus = 5;
-      record.data.signedDate = new Date();
-      record.data.pdfPath = finalPdfPath;
+      record.signStatus = 5;
+      record.signedDate = new Date();
+      record.url = finalPdfPath;
       signedCount++;
     }
 
-    // await templateDoc.save();
-    await updatedTemplate({ id: templateDoc.id }, { data: templateDoc.data });
-    res.status(200).json({
+    await templateDoc.save();
+    // await updatedTemplate({ id: templateDoc.id }, { data: templateDoc.data });
+    res.status(200).json({ 
+      success:true,
       message: `Signing completed for ${signedCount} records`,
       signedCount,
     });
