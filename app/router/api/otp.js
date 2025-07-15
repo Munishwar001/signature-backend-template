@@ -12,6 +12,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import ImageModule from 'docxtemplater-image-module-free';
 import  convertToPDF from '../../utils/convertToPdf.js';
+import { signStatus } from '../../constants/index.js';
 
 const router = Router();
 
@@ -38,8 +39,9 @@ router.get('/:id',checkLoginStatus,checkOfficer , async (req,res)=>{
   }
 }) 
 router.post("/verify",checkLoginStatus , checkOfficer , async (req,res)=>{
+  console.log(req.body);
   const {otp, recordId , selectedImg} = req.body; 
-   console.log("otp =>",otp , " receiverId=>",recordId , " selectedImg",selectedImg);
+   console.log("otp =>",otp , " receiverId=>",recordId , " selectedImg",selectedImg.url);
   try{
     // const otpRecord = await OtpModel.findOne({ recordId});
     // if (!otpRecord || otpRecord.expiresAt < Date.now()) {
@@ -56,7 +58,7 @@ router.post("/verify",checkLoginStatus , checkOfficer , async (req,res)=>{
      console.log("url of templateDoc =>",templateDoc.url);
     const templatePath = path.resolve(templateDoc.url.replace("/uploads", "./uploads/"));
     console.log("templatePath =>",templatePath);
-    const relativePath = selectedImg.replace("http://localhost:3000/uploads/", "");
+    const relativePath = selectedImg.url.replace("http://localhost:3000/uploads/", "");
     const signaturePath = path.join(__dirname, "../../../uploads", relativePath);
     console.log("signaturePth =>",signaturePath);
 
@@ -67,7 +69,7 @@ router.post("/verify",checkLoginStatus , checkOfficer , async (req,res)=>{
     let signedCount = 0;
 
     for (const record of templateDoc.data) {
-      if (record?.isDeleted) continue;
+      if (record?.isDeleted ||record?.signStatus==signStatus.rejected) continue;
 
       const recordData = record.data || {}; 
       recordData["image:Signature"] = signaturePath;
@@ -97,13 +99,16 @@ router.post("/verify",checkLoginStatus , checkOfficer , async (req,res)=>{
 
       const finalPdfPath = signedDocxPath.replace('.docx', '.pdf');
       fs.writeFileSync(finalPdfPath, pdfBuf);
-
+     
       record.signStatus = 5;
       record.signedDate = new Date();
       record.url = finalPdfPath;
       signedCount++;
     }
-
+     templateDoc.signStatus = 5;
+     templateDoc.signedDate = new Date();
+     templateDoc.signedBy = req.session.userId;
+     templateDoc.signatureId = selectedImg.id;
     await templateDoc.save();
     // await updatedTemplate({ id: templateDoc.id }, { data: templateDoc.data });
     res.status(200).json({ 
