@@ -16,6 +16,7 @@
     "bcryptjs": "^3.0.2",
     "connect-redis": "^8.0.2",
     "docxtemplater": "^3.61.1",
+    "docxtemplater-image-module-free": "^1.1.1",
     "dotenv": "^16.5.0",
     "ejs": "^3.1.10",
     "express": "^5.1.0",
