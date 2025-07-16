@@ -47,11 +47,7 @@ router.get("/", checkLoginStatus, async (req, res, next) => {
   }
 });
 
-router.post(
-  "/",
-  checkLoginStatus,
-  upload.single("file"),
-  async (req, res, next) => {
+router.post("/",checkLoginStatus,upload.single("file"),async (req, res, next) => {
     try {
       const { title, description } = req.body;
       const file = req.file;
@@ -101,10 +97,7 @@ router.post(
   }
 );
 
-router.post(
-  "/datahandling",
-  checkLoginStatus,
-  bulkUpload.single("file"),
+router.post("/datahandling",checkLoginStatus,bulkUpload.single("file"),
   async (req, res, next) => {
     try {
       const { title, templateId } = req.body;
@@ -290,7 +283,10 @@ router.post("/delete/:id", checkLoginStatus, async (req, res, next) => {
       return res.status(400).json({ message: "Record ID is missing" });
     }
     const updatedTemplate = await Template.updateOne(
-      { id: id },
+      {
+        id: id,
+        $or: [{ assignedTo: null }, { assignedTo: { $exists: false } }],
+      },
       {
         $set: {
           "data.$[elem].isDeleted": true,
@@ -303,14 +299,9 @@ router.post("/delete/:id", checkLoginStatus, async (req, res, next) => {
     );
 
     if (updatedTemplate.modifiedCount === 0) {
-      return res
-        .status(404)
-        .json({ message: "Record not found in data array" });
-    }
+      return res.status(404).json({ message: "Record not found in data array" });}
 
-    res
-      .status(200)
-      .json({ success: true, message: "Record marked as deleted" });
+    res.status(200).json({ success: true, message: "Record marked as deleted" });
   } catch (error) {
     console.error("Error while marking record as deleted:", error);
     next(error);
@@ -364,12 +355,17 @@ router.delete("/deleteWholeTemplate/:id", async (req, res) => {
   console.log("id while deleting template =>", id);
   try {
     const updatedTemplate = await updateOne(
-      { _id: id },
       {
-        $set: { status: 0 },
+        _id: id,
+        $or: [{ assignedTo: null },{ assignedTo: { $exists: false } },],
       },
+      { $set: { status: 0 } },
       { new: true }
     );
+
+    if (!updatedTemplate) {
+      return res.status(400).json({message:"Cannot delete.",});
+    }
     res
       .status(201)
       .json({ message: "successfully deleted", data: updatedTemplate });
@@ -377,11 +373,12 @@ router.delete("/deleteWholeTemplate/:id", async (req, res) => {
     console.error("Error deleting whole template :", err);
   }
 });
+
 router.post("/sendForSign", checkLoginStatus, async (req, res) => {
   try {
     const { recordId, officerId } = req.body.data;
     const updatedTemplate = await updateOne(
-      { id: recordId },
+      { id: recordId ,signStatus: signStatus.unsigned,"data.0": { $exists: true }},
       {
         $set: { assignedTo: officerId, signStatus: signStatus.readForSign },
       },
@@ -398,12 +395,10 @@ router.post("/delegate", checkLoginStatus, checkOfficer, async (req, res) => {
   try {
     const { recordId, reason } = req.body;
     console.log("recordId , reason", recordId, reason);
-    const existingRecord = await findOne({ id: recordId });
-
+    const existingRecord = await findOne({ id: recordId, signStatus: signStatus.readForSign, assignedTo: { $exists: true, $ne: null}});
+     
     if (!existingRecord) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Record not found" });
+      return res.status(404).json({ success: false, message: "Record not found" });
     }
 
     const createdBy = existingRecord.createdBy;
@@ -420,9 +415,7 @@ router.post("/delegate", checkLoginStatus, checkOfficer, async (req, res) => {
       { new: true }
     );
 
-    res
-      .status(200)
-      .json({ success: true, message: "Delegated", data: updatedTemplate });
+    res.status(200).json({ success: true, message: "Delegated", data: updatedTemplate });
   } catch (err) {
     console.log("Error while delegate =>", err);
     res.status(400).json({ success: false });
@@ -452,11 +445,7 @@ router.get("/previewDocs/:id", async (req, res) => {
   }
 });
 
-router.post(
-  "/reject/:id",
-  checkLoginStatus,
-  checkOfficer,
-  async (req, res, next) => {
+router.post("/reject/:id",checkLoginStatus,checkOfficer,async (req, res, next) => {
     const record = req.body;
     const { id } = req.params;
     console.log("record of rejected data ");
@@ -483,14 +472,10 @@ router.post(
       );
 
       if (updatedTemplate.modifiedCount === 0) {
-        return res
-          .status(404)
-          .json({ message: "Record not found in data array" });
+        return res.status(404).json({ message: "Record not found in data array" });
       }
 
-      res
-        .status(200)
-        .json({ success: true, message: "Record marked as deleted" });
+      res.status(200).json({ success: true, message: "Record marked as deleted" });
     } catch (error) {
       console.error("Error while marking record as deleted:", error);
       next(error);
@@ -512,7 +497,7 @@ router.get("/fetchRejected/:id", checkLoginStatus, async (req, res, next) => {
     }
 
     const transformedData = template.data
-      .filter((item) => item.signStatus === 2)
+      .filter((item) => item.signStatus === signStatus.rejected)
       .map((item) => ({
         ...item.toObject(),
         data:
@@ -532,11 +517,7 @@ router.get("/fetchRejected/:id", checkLoginStatus, async (req, res, next) => {
     next(error);
   }
 });
-router.post(
-  "/rejectWholeRequest/:id",
-  checkLoginStatus,
-  checkOfficer,
-  async (req, res) => {
+router.post("/rejectWholeRequest/:id",checkLoginStatus,checkOfficer,async (req, res) => {
     try {
       const id = req.params.id;
       console.log("in the rejected Whole Request ", req.body);
@@ -545,12 +526,11 @@ router.post(
       const existingRecord = await findOne({ id: id });
 
       if (!existingRecord) {
-        return res
-          .status(404)
-          .json({ success: false, message: "Record not found" });
+        return res.status(404).json({ success: false, message: "Record not found" });
       }
       const updatedTemplate = await updateOne(
-        { id: id },
+        { id: id ,signStatus:signStatus.readForSign
+        },
         {
           $set: {
             signStatus: signStatus.rejected,
@@ -560,9 +540,7 @@ router.post(
         { new: true }
       );
 
-      res
-        .status(200)
-        .json({ success: true, message: "Delegated", data: updatedTemplate });
+      res.status(200).json({ success: true, message: "Delegated", data: updatedTemplate });
     } catch (err) {
       console.log("Error while delegate =>", err);
       res.status(400).json({ success: false });

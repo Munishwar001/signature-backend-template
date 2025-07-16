@@ -13,6 +13,7 @@ import { fileURLToPath } from 'url';
 import ImageModule from 'docxtemplater-image-module-free';
 import  convertToPDF from '../../utils/convertToPdf.js';
 import { signStatus } from '../../constants/index.js';
+import { io} from '../../config/socket.js';
 
 const router = Router();
 
@@ -51,9 +52,13 @@ router.post("/verify",checkLoginStatus , checkOfficer , async (req,res)=>{
     
     const templateDocArray = await findTemplate({ id: recordId });
     if (!templateDocArray || templateDocArray.length === 0) {
-     return res.status(404).json({ message: "Template not found" });
-     }
-     const templateDoc = templateDocArray[0];
+      return res.status(404).json({ message: "Template not found" });
+    }
+    const templateDoc = templateDocArray[0]; 
+
+    io.to(req.session.userId).emit("inProcessing",templateDoc.id);
+    io.to(templateDoc.createdBy.toString()).emit("inProcessing",templateDoc.id);
+    // console.log(templateDoc.createdBy);
      console.log("templateDoc in the verify route =>",templateDoc);
      console.log("url of templateDoc =>",templateDoc.url);
     const templatePath = path.resolve(templateDoc.url.replace("/uploads", "./uploads/"));
@@ -61,18 +66,18 @@ router.post("/verify",checkLoginStatus , checkOfficer , async (req,res)=>{
     const relativePath = selectedImg.url.replace("http://localhost:3000/uploads/", "");
     const signaturePath = path.join(__dirname, "../../../uploads", relativePath);
     console.log("signaturePth =>",signaturePath);
-
+  
     if (!fs.existsSync(signaturePath)) {
       return res.status(404).json({ message: "Signature image not found", path: signaturePath });
     }
      
     let signedCount = 0;
-
+    templateDoc.signStatus = signStatus.inProcess;
     for (const record of templateDoc.data) {
       if (record?.isDeleted ||record?.signStatus==signStatus.rejected) continue;
 
-      const recordData = record.data || {}; 
-      recordData["image:Signature"] = signaturePath;
+        const recordData = Object.fromEntries(record.data.entries());
+        recordData["image:Signature"] = signaturePath;
       console.log("recordData =>", recordData)
       const content = fs.readFileSync(templatePath, 'binary');
       const zip = new PizZip(content);
@@ -90,6 +95,7 @@ router.post("/verify",checkLoginStatus , checkOfficer , async (req,res)=>{
       });
 
       doc.render(recordData);
+
       const docBuffer = doc.getZip().generate({ type: 'nodebuffer' });
 
       const signedDocxPath = `uploads/signed/${Date.now()}_${record.id}_signed.docx`;
@@ -104,13 +110,13 @@ router.post("/verify",checkLoginStatus , checkOfficer , async (req,res)=>{
       record.signedDate = new Date();
       record.url = finalPdfPath;
       signedCount++;
+      await templateDoc.save();
     }
      templateDoc.signStatus = 5;
      templateDoc.signedDate = new Date();
      templateDoc.signedBy = req.session.userId;
      templateDoc.signatureId = selectedImg.id;
     await templateDoc.save();
-    // await updatedTemplate({ id: templateDoc.id }, { data: templateDoc.data });
     res.status(200).json({ 
       success:true,
       message: `Signing completed for ${signedCount} records`,
