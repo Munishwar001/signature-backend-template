@@ -1,5 +1,5 @@
 import { find, findOne, updateOne, save } from "../services/templates.js";
-import { signStatus, roles } from "../constants/index.js";
+import { signStatus} from "../constants/index.js";
 import convertToPDF from "../utils/convertToPdf.js";
 import Template from "../models/template.js";
 import { fileURLToPath } from "url";
@@ -170,11 +170,38 @@ const handleClone = async (req, res) => {
     res.status(500).json({ error: "Error in cloning the document" });
   }
 }
-export { handleRejectedTemplate , 
+
+const handleGet = async (req, res, next) => {
+  try {
+    const userId = req.session.userId;
+    const userRole = req.session.role;
+    console.log("userId", userId);
+    console.log("userRole", userRole);
+    if (!userId) {
+      return res.status(401).json({ message: "Unauthorized: No session user ID" });
+    }
+
+    const data = await find({
+      $or: [
+        { assignedTo: userId },
+        { createdBy: userId },
+        { delegatedTo: userId },
+      ],
+      status: { $ne: 0 },
+    });
+    console.log(data);
+    res.status(200).json({ message: "Successfully fetched templates", data });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export { 
+  handleRejectedTemplate , 
   handleDeleteWholeTemplate , 
   handleDelegate,
   handleSendForSign ,
   handleDocsPreview,
-  handleClone 
-
+  handleClone, 
+  handleGet
 };

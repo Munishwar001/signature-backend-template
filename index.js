@@ -2,7 +2,6 @@ import { createServer } from 'http';
 import argvMap from './app/libs/argvMap.js';
 import './app/config/env.js';
 import mongoose from './app/config/mongoose.js';
-
 import { createSocketServer } from './app/config/socket.js';
 import app, { sessionMiddleware } from './app/index.js';
 
