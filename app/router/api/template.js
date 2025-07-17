@@ -14,6 +14,11 @@ import fs from "fs";
 import { fileURLToPath } from "url";
 import convertToPDF from "../../utils/convertToPdf.js";
 import { checkOfficer } from "../../middleware/checkOfficer.js";
+import { handleDelete } from "../../controller/api/template.js";
+import {
+  handleFetchRejected,
+  handleRejectTemplate, 
+} from "../../controller/api/rejectedTemplate.js";
 
 const router = Router();
 const __filename = fileURLToPath(import.meta.url);
@@ -26,13 +31,10 @@ router.get("/", checkLoginStatus, async (req, res, next) => {
     console.log("userId", userId);
     console.log("userRole", userRole);
     if (!userId) {
-      return res
-        .status(401)
-        .json({ message: "Unauthorized: No session user ID" });
+      return res.status(401).json({ message: "Unauthorized: No session user ID" });
     }
-    let data;
-
-    data = await find({
+    
+    const data = await find({
       $or: [
         { assignedTo: userId },
         { createdBy: userId },
@@ -198,50 +200,9 @@ router.post("/datahandling",checkLoginStatus,bulkUpload.single("file"),
   }
 );
 
-router.get("/:id/clone", checkLoginStatus, async (req, res) => {
-  try {
-    const id = req.params.id;
-    console.log("welcome in clone id is ", id);
-    const original = await Template.findOne({ _id: id });
-    if (
-      !original ||
-      original.isDeleted ||
-      original.signStatus == signStatus.rejected
-    ) {
-      return res.status(404).json({ message: "Try to access invalid access" });
-    }
-    console.log("findinf for cloning the data ", original);
-    const cloned = new Template({
-      ...original.toObject(),
-      _id: undefined,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      id: req.session.userId,
-      createdBy: req.session.userId,
-      assignedTo: null,
-      delegatedTo: null,
-      templateName: original.templateName + " (Clone)",
-      data: [],
-      signStatus: signStatus.unsigned,
-    });
-    console.log("reques session id ", req.session.userId);
-    await cloned.save();
-    console.log("cloned data =>", cloned);
-    res.send({ success: true });
-  } catch (error) {
-    console.error("Error in cloning:", {
-      error: error.message,
-      stack: error.stack,
-      templateId: req.params.id,
-    });
-    res.status(500).json({ error: "Error in cloning the document" });
-  }
-});
-
 router.get("/:id", checkLoginStatus, async (req, res, next) => {
   try {
     const { id } = req.params;
-    console.log("abc");
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ message: "Invalid ID format" });
     }
@@ -273,40 +234,7 @@ router.get("/:id", checkLoginStatus, async (req, res, next) => {
   }
 });
 
-router.post("/delete/:id", checkLoginStatus, async (req, res, next) => {
-  const record = req.body;
-  const { id } = req.params;
-  console.log("record =>", record);
-  console.log("id =>", id);
-  try {
-    if (!record.id) {
-      return res.status(400).json({ message: "Record ID is missing" });
-    }
-    const updatedTemplate = await Template.updateOne(
-      {
-        id: id,
-        $or: [{ assignedTo: null }, { assignedTo: { $exists: false } }],
-      },
-      {
-        $set: {
-          "data.$[elem].isDeleted": true,
-        },
-      },
-      {
-        arrayFilters: [{ "elem.id": new mongoose.Types.ObjectId(record.id) }],
-        new: true,
-      }
-    );
-
-    if (updatedTemplate.modifiedCount === 0) {
-      return res.status(404).json({ message: "Record not found in data array" });}
-
-    res.status(200).json({ success: true, message: "Record marked as deleted" });
-  } catch (error) {
-    console.error("Error while marking record as deleted:", error);
-    next(error);
-  }
-});
+router.post("/delete/:id", checkLoginStatus, handleDelete);
 
 router.get("/preview/:templateId/:dataId", async (req, res, next) => {
   const { templateId, dataId } = req.params;
@@ -329,7 +257,7 @@ router.get("/preview/:templateId/:dataId", async (req, res, next) => {
     );
     const content = fs.readFileSync(templatePath, "binary");
     const zip = new PizZip(content);
-    const doc = new Docxtemplater(zip, {
+    const doc = new Docxtemplater(zip, { 
       paragraphLoop: true,
       linebreaks: true,
     });
@@ -349,203 +277,7 @@ router.get("/preview/:templateId/:dataId", async (req, res, next) => {
     res.status(500).send("Error generating preview");
   }
 });
-
-router.delete("/deleteWholeTemplate/:id", async (req, res) => {
-  const { id } = req.params;
-  console.log("id while deleting template =>", id);
-  try {
-    const updatedTemplate = await updateOne(
-      {
-        _id: id,
-        $or: [{ assignedTo: null },{ assignedTo: { $exists: false } },],
-      },
-      { $set: { status: 0 } },
-      { new: true }
-    );
-
-    if (!updatedTemplate) {
-      return res.status(400).json({message:"Cannot delete.",});
-    }
-    res
-      .status(201)
-      .json({ message: "successfully deleted", data: updatedTemplate });
-  } catch (err) {
-    console.error("Error deleting whole template :", err);
-  }
-});
-
-router.post("/sendForSign", checkLoginStatus, async (req, res) => {
-  try {
-    const { recordId, officerId } = req.body.data;
-    const updatedTemplate = await updateOne(
-      { id: recordId ,signStatus: signStatus.unsigned,"data.0": { $exists: true }},
-      {
-        $set: { assignedTo: officerId, signStatus: signStatus.readForSign },
-      },
-      { new: true }
-    );
-    console.log("updatedTemplate ", updatedTemplate);
-    res.status(200).json({ success: true, message: "sent for sign" });
-  } catch (err) {
-    console.error("Error sending for sign:", err);
-  }
-});
-
-router.post("/delegate", checkLoginStatus, checkOfficer, async (req, res) => {
-  try {
-    const { recordId, reason } = req.body;
-    console.log("recordId , reason", recordId, reason);
-    const existingRecord = await findOne({ id: recordId, signStatus: signStatus.readForSign, assignedTo: { $exists: true, $ne: null}});
-     
-    if (!existingRecord) {
-      return res.status(404).json({ success: false, message: "Record not found" });
-    }
-
-    const createdBy = existingRecord.createdBy;
-
-    const updatedTemplate = await updateOne(
-      { id: recordId },
-      {
-        $set: {
-          delegatedTo: createdBy,
-          signStatus: signStatus.delegated,
-          delegationReason: reason,
-        },
-      },
-      { new: true }
-    );
-
-    res.status(200).json({ success: true, message: "Delegated", data: updatedTemplate });
-  } catch (err) {
-    console.log("Error while delegate =>", err);
-    res.status(400).json({ success: false });
-  }
-});
-
-router.get("/previewDocs/:id", async (req, res) => {
-  try {
-    const templateId = req.params.id;
-    if (!templateId) {
-      return res.status(400).send("No Id provided provided.");
-    }
-    const template = await findOne({ id: templateId });
-    console.log("templateURL", template.url);
-    const BASE_DIR = path.resolve(__dirname, "../../../");
-    const filePath = path.join(BASE_DIR, template.url);
-    const docxBuffer = fs.readFileSync(filePath);
-    const pdfBuffer = await convertToPDF(docxBuffer);
-    res.set({
-      "Content-Type": "application/pdf",
-      "Content-Disposition": 'inline; filename="preview.pdf"',
-    });
-    res.send(pdfBuffer);
-  } catch (error) {
-    console.error("Error generating PDF preview:", error);
-    res.status(500).send("Failed to preview document.");
-  }
-});
-
-router.post("/reject/:id",checkLoginStatus,checkOfficer,async (req, res, next) => {
-    const record = req.body;
-    const { id } = req.params;
-    console.log("record of rejected data ");
-    console.log("record =>", record);
-    console.log("id =>", id);
-    try {
-      if (!record.requestId) {
-        return res.status(400).json({ message: "Record ID is missing" });
-      }
-      const updatedTemplate = await Template.updateOne(
-        { id: id },
-        {
-          $set: {
-            "data.$[elem].signStatus": signStatus.rejected,
-            "data.$[elem].rejectionReason": record.rejectionReason,
-          },
-        },
-        {
-          arrayFilters: [
-            { "elem.id": new mongoose.Types.ObjectId(record.requestId) },
-          ],
-          new: true,
-        }
-      );
-
-      if (updatedTemplate.modifiedCount === 0) {
-        return res.status(404).json({ message: "Record not found in data array" });
-      }
-
-      res.status(200).json({ success: true, message: "Record marked as deleted" });
-    } catch (error) {
-      console.error("Error while marking record as deleted:", error);
-      next(error);
-    }
-  }
-);
-
-router.get("/fetchRejected/:id", checkLoginStatus, async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ message: "Invalid ID format" });
-    }
-
-    const template = await Template.findOne({ id: id });
-
-    if (!template) {
-      return res.status(404).json({ message: "Template not found" });
-    }
-
-    const transformedData = template.data
-      .filter((item) => item.signStatus === signStatus.rejected)
-      .map((item) => ({
-        ...item.toObject(),
-        data:
-          item.data instanceof Map ? Object.fromEntries(item.data) : item.data,
-        rejectionReason: item.rejectionReason || "No reason provided",
-        _id: item._id.toString(),
-      }));
-
-    res.status(200).json({
-      ...template.toObject(),
-      data: transformedData,
-      templateVariables: template.templateVariables,
-      allfields: template.templateVariables.map((v) => v.name),
-    });
-  } catch (error) {
-    console.error("Fetch template error:", error);
-    next(error);
-  }
-});
-router.post("/rejectWholeRequest/:id",checkLoginStatus,checkOfficer,async (req, res) => {
-    try {
-      const id = req.params.id;
-      console.log("in the rejected Whole Request ", req.body);
-      const { reason } = req.body;
-      console.log("id in rejectWholeRequest =>", id);
-      const existingRecord = await findOne({ id: id });
-
-      if (!existingRecord) {
-        return res.status(404).json({ success: false, message: "Record not found" });
-      }
-      const updatedTemplate = await updateOne(
-        { id: id ,signStatus:signStatus.readForSign
-        },
-        {
-          $set: {
-            signStatus: signStatus.rejected,
-            rejectionReason: reason,
-          },
-        },
-        { new: true }
-      );
-
-      res.status(200).json({ success: true, message: "Delegated", data: updatedTemplate });
-    } catch (err) {
-      console.log("Error while delegate =>", err);
-      res.status(400).json({ success: false });
-    }
-  }
-);
+router.post("/reject/:id",checkLoginStatus,checkOfficer,handleRejectTemplate);
+router.get("/fetchRejected/:id", checkLoginStatus, handleFetchRejected);
 
 export default router;

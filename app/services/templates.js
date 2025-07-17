@@ -6,7 +6,7 @@ export const find = (criteria, projection, options = {}) => {
 }
 
 export const findOne = (criteria, projection, options = {}) => {
-    return model.findOne(criteria, projection, { ...options, lean: true });
+    return model.findOne(criteria, projection, { ...options, lean: false });
 }
 
 export const updateOne = (criteria, updateObj, options = {}) => {

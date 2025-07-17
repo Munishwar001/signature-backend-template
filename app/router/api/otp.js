@@ -1,6 +1,5 @@
 import {Router} from 'express';
 import Template from '../../models/template.js';
-import upload from '../../middleware/uploads.js';
 import path from 'path';
 import { find, findOne, updateOne, save } from '../../services/otp.js'
 import { find as findTemplate, updateOne as updatedTemplate} from "../../services/templates.js";
@@ -49,7 +48,6 @@ router.post("/verify",checkLoginStatus , checkOfficer , async (req,res)=>{
     //   return res.status(400).json({ success: false, message: "Invalid or expired OTP" });
     // }
        
-    
     const templateDocArray = await findTemplate({ id: recordId });
     if (!templateDocArray || templateDocArray.length === 0) {
       return res.status(404).json({ message: "Template not found" });
@@ -59,13 +57,13 @@ router.post("/verify",checkLoginStatus , checkOfficer , async (req,res)=>{
     io.to(req.session.userId).emit("inProcessing",templateDoc.id);
     io.to(templateDoc.createdBy.toString()).emit("inProcessing",templateDoc.id);
     // console.log(templateDoc.createdBy);
-     console.log("templateDoc in the verify route =>",templateDoc);
-     console.log("url of templateDoc =>",templateDoc.url);
+    //  console.log("templateDoc in the verify route =>",templateDoc);
+    //  console.log("url of templateDoc =>",templateDoc.url);
     const templatePath = path.resolve(templateDoc.url.replace("/uploads", "./uploads/"));
-    console.log("templatePath =>",templatePath);
+    // console.log("templatePath =>",templatePath);
     const relativePath = selectedImg.url.replace("http://localhost:3000/uploads/", "");
     const signaturePath = path.join(__dirname, "../../../uploads", relativePath);
-    console.log("signaturePth =>",signaturePath);
+    // console.log("signaturePth =>",signaturePath);
   
     if (!fs.existsSync(signaturePath)) {
       return res.status(404).json({ message: "Signature image not found", path: signaturePath });
