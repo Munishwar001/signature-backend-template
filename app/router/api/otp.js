@@ -108,7 +108,14 @@ router.post("/verify",checkLoginStatus , checkOfficer , async (req,res)=>{
       record.signedDate = new Date();
       record.url = finalPdfPath;
       signedCount++;
+      templateDoc.signCount = signedCount;
       await templateDoc.save();
+       io.to(req.session.userId).emit("signProgress", {recordId: templateDoc.id,signedCount,
+         totalCount: templateDoc.data.length,
+       });
+     io.to(templateDoc.createdBy.toString()).emit("signProgress", {recordId: templateDoc.id,signedCount,
+       totalCount: templateDoc.data.length,
+     });
     }
      templateDoc.signStatus = 5;
      templateDoc.signedDate = new Date();
@@ -121,7 +128,7 @@ router.post("/verify",checkLoginStatus , checkOfficer , async (req,res)=>{
       signedCount,
     });
 
-  } catch (err) {
+  } catch (err) {                 
     console.error("Signing error:", err);
     res.status(500).json({ message: "Signing failed", error: err.message });
   }

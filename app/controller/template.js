@@ -4,6 +4,7 @@ import convertToPDF from "../utils/convertToPdf.js";
 import Template from "../models/template.js";
 import { fileURLToPath } from "url";
 import path from "path";
+import { io} from '../config/socket.js';
 import fs from "fs";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -103,7 +104,9 @@ const handleSendForSign = async (req, res) => {
         $set: { assignedTo: officerId, signStatus: signStatus.readForSign },
       },
       { new: true }
-    );
+    );  
+     
+     io.to(officerId).emit("sendedForSign",updatedTemplate);
     console.log("updatedTemplate ", updatedTemplate);
     res.status(200).json({ success: true, message: "sent for sign" });
   } catch (err) {

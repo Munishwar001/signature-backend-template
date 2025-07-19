@@ -91,6 +91,9 @@ export const schema = new mongoose.Schema({
     'delegatedTo': {
         type: mongoose.Schema.Types.ObjectId,
     },
+    'signCount':{
+        type:Number,
+    }
 }, { timestamps: true });
 
 const model = mongoose.model('templates', schema);

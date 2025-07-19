@@ -30,7 +30,7 @@ app.use(cors({
 	},
 	credentials: true,
 }))
-app.use(apiLimiter);
+// app.use(apiLimiter);
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, '/views'));
 app.use(sessionMiddleware);
